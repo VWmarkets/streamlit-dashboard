@@ -90,8 +90,11 @@ with tab1:
 
         # Dynamically select available columns for plotting
         available_columns = [col for col in ['Close', 'SMA_50', 'SMA_200'] if col in data.columns]
-        if available_columns:
-            st.line_chart(data[available_columns])
+        if len(available_columns) > 0:
+            try:
+                st.line_chart(data[available_columns])
+            except Exception as e:
+                st.warning(f"Error plotting data for {ticker}: {e}")
         else:
             st.warning(f"No valid columns to plot for {ticker}. Skipping chart.")
 
@@ -105,8 +108,8 @@ with tab1:
                     cost_price = float(row_data[2].strip())
                     current_price = data['Close'].iloc[-1]
                     total_value += quantity * current_price
-                except Exception:
-                    st.warning(f"Could not calculate value for {ticker}. Check portfolio input.")
+                except Exception as e:
+                    st.warning(f"Could not calculate value for {ticker}: {e}")
 
     st.write(f"**Total Portfolio Value:** ${total_value:.2f}")
 
