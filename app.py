@@ -14,7 +14,7 @@ st.sidebar.write("Add your stocks and track their performance.")
 tickers = st.sidebar.text_input("Enter stock tickers (comma-separated):", "AAPL, TSLA, NVDA, XOM")
 
 # Fetch Stock Data
-@st.cache
+@st.cache_data
 def fetch_data(ticker_list):
     data = {}
     for ticker in ticker_list:
