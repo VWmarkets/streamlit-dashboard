@@ -2,7 +2,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
-import requests  # For NewsAPI integration
+import requests
 
 # Title
 st.title("Comprehensive Financial Dashboard")
@@ -47,11 +47,9 @@ def fetch_news(ticker):
         return []
 
 # Calculate Moving Averages
-def add_moving_averages(data, window=50):
+def add_moving_averages(data, window):
     if len(data) >= window:
         data[f"SMA_{window}"] = data['Close'].rolling(window).mean()
-    else:
-        data[f"SMA_{window}"] = np.nan
     return data
 
 # Calculate RSI
@@ -85,18 +83,18 @@ with tab1:
         data = stock_data[ticker]
 
         # Add moving averages
-        data = add_moving_averages(data, window=50)
-        data = add_moving_averages(data, window=200)
+        try:
+            data = add_moving_averages(data, 50)
+            data = add_moving_averages(data, 200)
 
-        # Dynamically select available columns for plotting
-        available_columns = [col for col in ['Close', 'SMA_50', 'SMA_200'] if col in data.columns]
-        if len(available_columns) > 0:
-            try:
+            # Dynamically select available columns for plotting
+            available_columns = [col for col in ['Close', 'SMA_50', 'SMA_200'] if col in data.columns]
+            if available_columns:
                 st.line_chart(data[available_columns])
-            except Exception as e:
-                st.warning(f"Error plotting data for {ticker}: {e}")
-        else:
-            st.warning(f"No valid columns to plot for {ticker}. Skipping chart.")
+            else:
+                st.warning(f"No valid columns to plot for {ticker}. Skipping chart.")
+        except Exception as e:
+            st.warning(f"Error processing moving averages for {ticker}: {e}")
 
         # Calculate portfolio value
         portfolio_rows = portfolio_data.split("\n")
@@ -111,7 +109,7 @@ with tab1:
                 except Exception as e:
                     st.warning(f"Could not calculate value for {ticker}: {e}")
 
-    st.write(f"**Total Portfolio Value:** ${total_value:.2f}")
+    st.write(f"**Total Portfolio Value:** ${total_value:,.2f}")
 
 # Tab 2: RSI Alerts
 with tab2:
@@ -122,14 +120,17 @@ with tab2:
             continue
 
         data = stock_data[ticker]
-        data['RSI'] = calculate_rsi(data)
-        recent_rsi = data['RSI'].iloc[-1]
-        if recent_rsi < 30:
-            st.write(f"**{ticker} is oversold (RSI: {recent_rsi:.2f})**")
-        elif recent_rsi > 70:
-            st.write(f"**{ticker} is overbought (RSI: {recent_rsi:.2f})**")
-        else:
-            st.write(f"{ticker} RSI is normal: {recent_rsi:.2f}")
+        try:
+            data['RSI'] = calculate_rsi(data)
+            recent_rsi = data['RSI'].iloc[-1]
+            if recent_rsi < 30:
+                st.write(f"**{ticker} is oversold (RSI: {recent_rsi:.2f})**")
+            elif recent_rsi > 70:
+                st.write(f"**{ticker} is overbought (RSI: {recent_rsi:.2f})**")
+            else:
+                st.write(f"{ticker} RSI is normal: {recent_rsi:.2f}")
+        except Exception as e:
+            st.warning(f"Error calculating RSI for {ticker}: {e}")
 
 # Tab 3: Options Analysis
 with tab3:
