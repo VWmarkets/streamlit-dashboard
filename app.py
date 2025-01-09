@@ -2,6 +2,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
+import requests  # For NewsAPI integration
 
 # Title
 st.title("Comprehensive Financial Dashboard")
@@ -11,6 +12,9 @@ st.write("Track your portfolio, options, and market news in real time.")
 st.sidebar.header("User Input")
 tickers = st.sidebar.text_input("Enter stock tickers (comma-separated):", "AAPL, TSLA, NVDA, XOM")
 portfolio_data = st.sidebar.text_area("Enter portfolio (Ticker, Quantity, Price):", "AAPL, 10, 150\nTSLA, 5, 700")
+
+# NewsAPI Key
+NEWS_API_KEY = "5cd9644b766a41368874c9fcef66b58b"
 
 # Fetch Stock Data
 @st.cache_data
@@ -26,6 +30,21 @@ def fetch_data(ticker_list):
         except Exception as e:
             st.warning(f"Failed to load data for {ticker}: {e}")
     return data
+
+# Fetch News Data
+@st.cache_data
+def fetch_news(ticker):
+    url = f"https://newsapi.org/v2/everything?q={ticker}&apiKey={NEWS_API_KEY}"
+    try:
+        response = requests.get(url)
+        if response.status_code == 200:
+            return response.json().get("articles", [])
+        else:
+            st.warning(f"Failed to fetch news for {ticker}: {response.status_code}")
+            return []
+    except Exception as e:
+        st.warning(f"Error fetching news: {e}")
+        return []
 
 # Calculate Moving Averages
 def add_moving_averages(data, window=50):
@@ -128,8 +147,15 @@ with tab3:
 # Tab 4: News and Indicators
 with tab4:
     st.subheader("News and Indicators")
-    st.write("This section will feature real-time news and economic indicators.")
-    st.write("Coming soon: Federal Reserve updates, CPI, and more.")
+    st.write("Latest financial news for your selected tickers.")
+    for ticker in ticker_list:
+        st.write(f"### News for {ticker}")
+        articles = fetch_news(ticker)
+        if articles:
+            for article in articles[:5]:  # Limit to 5 articles per ticker
+                st.write(f"- [{article['title']}]({article['url']})")
+        else:
+            st.write("No news available.")
 
 # Footer
 st.write("**Note:** This dashboard is for informational purposes only. Please consult a financial advisor.")
