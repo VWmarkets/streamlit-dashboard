@@ -18,7 +18,10 @@ portfolio_data = st.sidebar.text_area("Enter portfolio (Ticker, Quantity, Price)
 def fetch_data(ticker_list):
     data = {}
     for ticker in ticker_list:
-        data[ticker] = yf.download(ticker, period="1y", interval="1d")
+        try:
+            data[ticker] = yf.download(ticker, period="1y", interval="1d")
+        except Exception as e:
+            st.warning(f"Failed to load data for {ticker}: {e}")
     return data
 
 # Calculate Moving Averages with Safeguards
@@ -50,6 +53,10 @@ with tab1:
 
     for ticker in ticker_list:
         st.write(f"### {ticker}")
+        if ticker not in stock_data or stock_data[ticker].empty:
+            st.warning(f"No data available for {ticker}. Skipping...")
+            continue
+
         data = stock_data[ticker]
 
         # Add moving averages
@@ -58,10 +65,9 @@ with tab1:
 
         # Ensure columns exist before plotting
         columns_to_plot = ['Close']
-        if "SMA_50" in data.columns:
-            columns_to_plot.append("SMA_50")
-        if "SMA_200" in data.columns:
-            columns_to_plot.append("SMA_200")
+        for column in ["SMA_50", "SMA_200"]:
+            if column in data.columns:
+                columns_to_plot.append(column)
 
         st.line_chart(data[columns_to_plot])
 
@@ -70,10 +76,13 @@ with tab1:
         for row in portfolio_rows:
             row_data = row.split(",")
             if len(row_data) == 3 and row_data[0].strip() == ticker:
-                quantity = float(row_data[1].strip())
-                cost_price = float(row_data[2].strip())
-                current_price = data['Close'].iloc[-1]
-                total_value += quantity * current_price
+                try:
+                    quantity = float(row_data[1].strip())
+                    cost_price = float(row_data[2].strip())
+                    current_price = data['Close'].iloc[-1]
+                    total_value += quantity * current_price
+                except Exception:
+                    st.warning(f"Could not calculate value for {ticker}. Check portfolio input.")
 
     st.write(f"Total Portfolio Value: ${total_value:.2f}")
 
@@ -81,6 +90,10 @@ with tab1:
 with tab2:
     st.subheader("RSI Alerts")
     for ticker in ticker_list:
+        if ticker not in stock_data or stock_data[ticker].empty:
+            st.warning(f"No data available for {ticker}. Skipping...")
+            continue
+
         data = stock_data[ticker]
         data['RSI'] = calculate_rsi(data)
         recent_rsi = data['RSI'].iloc[-1]
@@ -95,11 +108,17 @@ with tab2:
 with tab3:
     st.subheader("Options Analysis")
     selected_ticker = st.selectbox("Select a stock for options data:", ticker_list)
-    options = yf.Ticker(selected_ticker).option_chain()
-    st.write(f"**Calls for {selected_ticker}:**")
-    st.dataframe(options.calls)
-    st.write(f"**Puts for {selected_ticker}:**")
-    st.dataframe(options.puts)
+    if selected_ticker not in stock_data or stock_data[selected_ticker].empty:
+        st.warning(f"No data available for {selected_ticker}.")
+    else:
+        try:
+            options = yf.Ticker(selected_ticker).option_chain()
+            st.write(f"**Calls for {selected_ticker}:**")
+            st.dataframe(options.calls)
+            st.write(f"**Puts for {selected_ticker}:**")
+            st.dataframe(options.puts)
+        except Exception as e:
+            st.warning(f"Failed to load options data for {selected_ticker}: {e}")
 
 # News and Indicators Tab
 with tab4:
