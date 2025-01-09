@@ -21,10 +21,21 @@ def fetch_data(ticker_list):
         data[ticker] = yf.download(ticker, period="1y", interval="1d")
     return data
 
-# Calculate Moving Averages
+# Calculate Moving Averages with Safeguards
 def add_moving_averages(data, window=50):
-    data[f"SMA_{window}"] = data['Close'].rolling(window).mean()
+    if len(data) >= window:
+        data[f"SMA_{window}"] = data['Close'].rolling(window).mean()
+    else:
+        data[f"SMA_{window}"] = np.nan
     return data
+
+# Calculate RSI
+def calculate_rsi(data, period=14):
+    delta = data['Close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(period).mean()
+    rs = gain / loss
+    return 100 - (100 / (1 + rs))
 
 ticker_list = [ticker.strip() for ticker in tickers.split(",")]
 stock_data = fetch_data(ticker_list)
@@ -36,24 +47,39 @@ tab1, tab2, tab3, tab4 = st.tabs(["Portfolio Overview", "RSI Alerts", "Options A
 with tab1:
     st.subheader("Portfolio Overview")
     total_value = 0
+
     for ticker in ticker_list:
         st.write(f"### {ticker}")
         data = stock_data[ticker]
+
+        # Add moving averages
         data = add_moving_averages(data, window=50)
         data = add_moving_averages(data, window=200)
-        st.line_chart(data[['Close', 'SMA_50', 'SMA_200']])
+
+        # Ensure columns exist before plotting
+        columns_to_plot = ['Close']
+        if "SMA_50" in data.columns:
+            columns_to_plot.append("SMA_50")
+        if "SMA_200" in data.columns:
+            columns_to_plot.append("SMA_200")
+
+        st.line_chart(data[columns_to_plot])
+
+        # Calculate portfolio value
+        portfolio_rows = portfolio_data.split("\n")
+        for row in portfolio_rows:
+            row_data = row.split(",")
+            if len(row_data) == 3 and row_data[0].strip() == ticker:
+                quantity = float(row_data[1].strip())
+                cost_price = float(row_data[2].strip())
+                current_price = data['Close'].iloc[-1]
+                total_value += quantity * current_price
+
     st.write(f"Total Portfolio Value: ${total_value:.2f}")
 
 # RSI Alerts Tab
 with tab2:
     st.subheader("RSI Alerts")
-    def calculate_rsi(data, period=14):
-        delta = data['Close'].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(period).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(period).mean()
-        rs = gain / loss
-        return 100 - (100 / (1 + rs))
-
     for ticker in ticker_list:
         data = stock_data[ticker]
         data['RSI'] = calculate_rsi(data)
