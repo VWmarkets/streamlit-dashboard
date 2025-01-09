@@ -2,7 +2,6 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
-from datetime import datetime
 
 # Title
 st.title("Comprehensive Financial Dashboard")
@@ -19,7 +18,11 @@ def fetch_data(ticker_list):
     data = {}
     for ticker in ticker_list:
         try:
-            data[ticker] = yf.download(ticker, period="1y", interval="1d")
+            df = yf.download(ticker, period="1y", interval="1d")
+            if 'Close' in df.columns:
+                data[ticker] = df
+            else:
+                st.warning(f"Missing 'Close' data for {ticker}. Skipping...")
         except Exception as e:
             st.warning(f"Failed to load data for {ticker}: {e}")
     return data
@@ -40,10 +43,11 @@ def calculate_rsi(data, period=14):
     rs = gain / loss
     return 100 - (100 / (1 + rs))
 
+# Prepare Ticker List
 ticker_list = [ticker.strip() for ticker in tickers.split(",")]
 stock_data = fetch_data(ticker_list)
 
-# Portfolio Overview Tab
+# Tabs
 tab1, tab2, tab3, tab4 = st.tabs(["Portfolio Overview", "RSI Alerts", "Options Analysis", "News & Indicators"])
 
 # Tab 1: Portfolio Overview
@@ -53,8 +57,10 @@ with tab1:
 
     for ticker in ticker_list:
         st.write(f"### {ticker}")
+
+        # Check if data exists for the ticker
         if ticker not in stock_data or stock_data[ticker].empty:
-            st.warning(f"No data available for {ticker}. Skipping...")
+            st.warning(f"No valid data for {ticker}. Skipping...")
             continue
 
         data = stock_data[ticker]
@@ -69,7 +75,10 @@ with tab1:
             if column in data.columns:
                 columns_to_plot.append(column)
 
-        st.line_chart(data[columns_to_plot])
+        if all(col in data.columns for col in columns_to_plot):
+            st.line_chart(data[columns_to_plot])
+        else:
+            st.warning(f"Missing required data for {ticker}. Cannot plot chart.")
 
         # Calculate portfolio value
         portfolio_rows = portfolio_data.split("\n")
@@ -84,9 +93,9 @@ with tab1:
                 except Exception:
                     st.warning(f"Could not calculate value for {ticker}. Check portfolio input.")
 
-    st.write(f"Total Portfolio Value: ${total_value:.2f}")
+    st.write(f"**Total Portfolio Value:** ${total_value:.2f}")
 
-# RSI Alerts Tab
+# Tab 2: RSI Alerts
 with tab2:
     st.subheader("RSI Alerts")
     for ticker in ticker_list:
@@ -104,7 +113,7 @@ with tab2:
         else:
             st.write(f"{ticker} RSI is normal: {recent_rsi:.2f}")
 
-# Options Analysis Tab
+# Tab 3: Options Analysis
 with tab3:
     st.subheader("Options Analysis")
     selected_ticker = st.selectbox("Select a stock for options data:", ticker_list)
@@ -120,7 +129,7 @@ with tab3:
         except Exception as e:
             st.warning(f"Failed to load options data for {selected_ticker}: {e}")
 
-# News and Indicators Tab
+# Tab 4: News and Indicators
 with tab4:
     st.subheader("News and Indicators")
     st.write("This section will feature real-time news and economic indicators.")
