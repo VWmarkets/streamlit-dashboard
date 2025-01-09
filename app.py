@@ -27,7 +27,7 @@ def fetch_data(ticker_list):
             st.warning(f"Failed to load data for {ticker}: {e}")
     return data
 
-# Calculate Moving Averages with Safeguards
+# Calculate Moving Averages
 def add_moving_averages(data, window=50):
     if len(data) >= window:
         data[f"SMA_{window}"] = data['Close'].rolling(window).mean()
@@ -69,16 +69,12 @@ with tab1:
         data = add_moving_averages(data, window=50)
         data = add_moving_averages(data, window=200)
 
-        # Ensure columns exist before plotting
-        columns_to_plot = ['Close']
-        for column in ["SMA_50", "SMA_200"]:
-            if column in data.columns:
-                columns_to_plot.append(column)
-
-        if all(col in data.columns for col in columns_to_plot):
-            st.line_chart(data[columns_to_plot])
+        # Dynamically select available columns for plotting
+        available_columns = [col for col in ['Close', 'SMA_50', 'SMA_200'] if col in data.columns]
+        if available_columns:
+            st.line_chart(data[available_columns])
         else:
-            st.warning(f"Missing required data for {ticker}. Cannot plot chart.")
+            st.warning(f"No valid columns to plot for {ticker}. Skipping chart.")
 
         # Calculate portfolio value
         portfolio_rows = portfolio_data.split("\n")
