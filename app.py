@@ -29,16 +29,58 @@ def fetch_stock_data(ticker_list):
             st.warning(f"Error fetching data for {ticker}: {e}")
     return data
 
-# Function to calculate True Value (mock calculation)
+# Function to calculate True Value
 def calculate_true_value(current_price):
-    # Mock formula for demonstration
-    true_value = current_price * 1.15
-    return round(true_value, 2)
+    # Placeholder logic for true value calculation
+    return current_price * 1.1  # Assuming a 10% premium for now
 
-# Function to calculate Buy-to-Hold Scale (mock calculation)
+# Function to calculate Buy-to-Hold Score
 def calculate_buy_to_hold_score(current_price, true_value):
-    score = min(max(int((true_value / current_price) * 10), 1), 10)
-    return score
+    # Placeholder logic for scoring
+    ratio = current_price / true_value
+    if ratio < 0.8:
+        return 10
+    elif ratio < 0.9:
+        return 8
+    elif ratio < 1:
+        return 6
+    elif ratio < 1.1:
+        return 4
+    else:
+        return 2
+
+# Function to fetch intraday data from Alpha Vantage
+def fetch_intraday_data(symbol, interval, outputsize="compact"):
+    base_url = "https://www.alphavantage.co/query"
+    params = {
+        "function": "TIME_SERIES_INTRADAY",
+        "symbol": symbol,
+        "interval": interval,
+        "outputsize": outputsize,
+        "datatype": "json",
+        "apikey": ALPHA_VANTAGE_API_KEY,
+    }
+    response = requests.get(base_url, params=params)
+    data = response.json()
+
+    if f"Time Series ({interval})" in data:
+        time_series_key = f"Time Series ({interval})"
+        intraday_data = data[time_series_key]
+        df = pd.DataFrame.from_dict(intraday_data, orient="index")
+        df = df.rename(
+            columns={
+                "1. open": "Open",
+                "2. high": "High",
+                "3. low": "Low",
+                "4. close": "Close",
+                "5. volume": "Volume",
+            }
+        )
+        df.index = pd.to_datetime(df.index)
+        df = df.sort_index()
+        return df
+    else:
+        return None
 
 # Portfolio Overview Tab
 with tab1:
@@ -51,15 +93,19 @@ with tab1:
             stock_data = fetch_stock_data(ticker_list)
             for ticker, df in stock_data.items():
                 if not df.empty:
-                    current_price = df["Close"].iloc[-1]
-                    true_value = calculate_true_value(current_price)
-                    buy_to_hold_score = calculate_buy_to_hold_score(current_price, true_value)
-                    
-                    st.subheader(ticker)
-                    st.line_chart(df["Close"])
-                    st.write(f"**Current Price**: ${current_price:.2f}")
-                    st.write(f"**True Value (based on metrics)**: ${true_value}")
-                    st.write(f"**Buy-to-Hold Score**: {buy_to_hold_score}/10")
+                    # Ensure 'Close' column exists and has values
+                    if 'Close' in df.columns and not df['Close'].empty:
+                        current_price = df["Close"].iloc[-1]
+                        true_value = calculate_true_value(current_price)
+                        buy_to_hold_score = calculate_buy_to_hold_score(current_price, true_value)
+                        
+                        st.subheader(ticker)
+                        st.line_chart(df["Close"])
+                        st.write(f"**Current Price**: ${current_price:.2f}")
+                        st.write(f"**True Value (based on metrics)**: ${true_value:.2f}")
+                        st.write(f"**Buy-to-Hold Score**: {buy_to_hold_score}/10")
+                    else:
+                        st.warning(f"No valid 'Close' data available for {ticker}")
                 else:
                     st.warning(f"No data available for {ticker}")
 
@@ -111,38 +157,6 @@ with tab5:
 
     if st.button("Fetch Intraday Data"):
         with st.spinner("Fetching intraday data..."):
-            def fetch_intraday_data(symbol, interval, outputsize="compact"):
-                base_url = "https://www.alphavantage.co/query"
-                params = {
-                    "function": "TIME_SERIES_INTRADAY",
-                    "symbol": symbol,
-                    "interval": interval,
-                    "outputsize": outputsize,
-                    "datatype": "json",
-                    "apikey": ALPHA_VANTAGE_API_KEY,
-                }
-                response = requests.get(base_url, params=params)
-                data = response.json()
-
-                if f"Time Series ({interval})" in data:
-                    time_series_key = f"Time Series ({interval})"
-                    intraday_data = data[time_series_key]
-                    df = pd.DataFrame.from_dict(intraday_data, orient="index")
-                    df = df.rename(
-                        columns={
-                            "1. open": "Open",
-                            "2. high": "High",
-                            "3. low": "Low",
-                            "4. close": "Close",
-                            "5. volume": "Volume",
-                        }
-                    )
-                    df.index = pd.to_datetime(df.index)
-                    df = df.sort_index()
-                    return df
-                else:
-                    return None
-
             intraday_data = fetch_intraday_data(symbol, interval, outputsize)
             if intraday_data is not None:
                 st.success(f"Data fetched for {symbol} ({interval})")
