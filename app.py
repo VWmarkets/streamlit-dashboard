@@ -3,7 +3,6 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import requests
-from textblob import TextBlob
 
 # Title
 st.title("Comprehensive Financial Dashboard")
@@ -31,12 +30,21 @@ def fetch_stock_data(ticker_list):
 
 # Function to calculate True Value
 def calculate_true_value(current_price):
+    # Ensure current_price is a scalar
+    if isinstance(current_price, pd.Series):
+        current_price = current_price.iloc[-1]
     # Placeholder logic for true value calculation
     return current_price * 1.1  # Assuming a 10% premium for now
 
 # Function to calculate Buy-to-Hold Score
 def calculate_buy_to_hold_score(current_price, true_value):
-    # Placeholder logic for scoring
+    # Ensure current_price and true_value are scalars
+    if isinstance(current_price, pd.Series):
+        current_price = current_price.iloc[-1]
+    if isinstance(true_value, pd.Series):
+        true_value = true_value.iloc[-1]
+
+    # Calculate ratio and determine score
     ratio = current_price / true_value
     if ratio < 0.8:
         return 10
@@ -48,39 +56,6 @@ def calculate_buy_to_hold_score(current_price, true_value):
         return 4
     else:
         return 2
-
-# Function to fetch intraday data from Alpha Vantage
-def fetch_intraday_data(symbol, interval, outputsize="compact"):
-    base_url = "https://www.alphavantage.co/query"
-    params = {
-        "function": "TIME_SERIES_INTRADAY",
-        "symbol": symbol,
-        "interval": interval,
-        "outputsize": outputsize,
-        "datatype": "json",
-        "apikey": ALPHA_VANTAGE_API_KEY,
-    }
-    response = requests.get(base_url, params=params)
-    data = response.json()
-
-    if f"Time Series ({interval})" in data:
-        time_series_key = f"Time Series ({interval})"
-        intraday_data = data[time_series_key]
-        df = pd.DataFrame.from_dict(intraday_data, orient="index")
-        df = df.rename(
-            columns={
-                "1. open": "Open",
-                "2. high": "High",
-                "3. low": "Low",
-                "4. close": "Close",
-                "5. volume": "Volume",
-            }
-        )
-        df.index = pd.to_datetime(df.index)
-        df = df.sort_index()
-        return df
-    else:
-        return None
 
 # Portfolio Overview Tab
 with tab1:
@@ -141,9 +116,6 @@ with tab3:
 # Twitter Feeds Tab
 with tab4:
     st.header("Twitter Feeds")
-    usernames = st.text_input("Enter Twitter usernames (comma-separated):", "elonmusk, realDonaldTrump")
-    username_list = [u.strip() for u in usernames.split(",")]
-
     st.write("Twitter integration requires elevated API access. Feature will be functional when configured.")
 
 # Intraday Data Tab
