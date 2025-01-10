@@ -9,13 +9,14 @@ from textblob import TextBlob
 st.title("Comprehensive Financial Dashboard")
 st.write("Track your portfolio, options, market news, and Twitter feeds in real time.")
 
+# API Keys
+ALPHA_VANTAGE_API_KEY = "4UZZNRBA9VCHAHGD"
+POLYGON_API_KEY = "xRygUS5Dq37UzkKuHtjnCHmFocKp7yVA"
+
 # Tabs for the app
 tab1, tab2, tab3, tab4, tab5 = st.tabs(
     ["Portfolio Overview", "RSI Alerts", "Options Analysis", "Twitter Feeds", "Intraday Data"]
 )
-
-# Alpha Vantage API Key
-ALPHA_VANTAGE_API_KEY = "4UZZNRBA9VCHAHGD"
 
 # Function to fetch stock data
 @st.cache_data
@@ -29,61 +30,6 @@ def fetch_stock_data(ticker_list):
             st.warning(f"Error fetching data for {ticker}: {e}")
     return data
 
-# Function to fetch intraday data from Alpha Vantage
-def fetch_intraday_data(symbol, interval, outputsize="compact"):
-    base_url = "https://www.alphavantage.co/query"
-    params = {
-        "function": "TIME_SERIES_INTRADAY",
-        "symbol": symbol,
-        "interval": interval,
-        "outputsize": outputsize,
-        "datatype": "json",
-        "apikey": ALPHA_VANTAGE_API_KEY,
-    }
-    response = requests.get(base_url, params=params)
-    data = response.json()
-
-    if f"Time Series ({interval})" in data:
-        time_series_key = f"Time Series ({interval})"
-        intraday_data = data[time_series_key]
-        df = pd.DataFrame.from_dict(intraday_data, orient="index")
-        df = df.rename(
-            columns={
-                "1. open": "Open",
-                "2. high": "High",
-                "3. low": "Low",
-                "4. close": "Close",
-                "5. volume": "Volume",
-            }
-        )
-        df.index = pd.to_datetime(df.index)
-        df = df.sort_index()
-        return df
-    else:
-        return None
-
-# Helper Functions
-def calculate_true_value(current_price):
-    """Calculate the true value of a stock based on metrics (placeholder logic)."""
-    # Example: Assume the true value is 10% higher than the current price
-    return current_price * 1.10
-
-def calculate_buy_to_hold_score(current_price, true_value):
-    """Calculate a Buy-to-Hold Score (1-10) based on the relationship between current price and true value."""
-    ratio = current_price / true_value
-    if ratio < 0.8:
-        return 10  # Strong Buy
-    elif ratio < 0.9:
-        return 8
-    elif ratio < 1.0:
-        return 6
-    elif ratio < 1.1:
-        return 4
-    elif ratio < 1.2:
-        return 2
-    else:
-        return 1  # Overvalued
-
 # Portfolio Overview Tab
 with tab1:
     st.header("Portfolio Overview")
@@ -96,14 +42,9 @@ with tab1:
             for ticker, df in stock_data.items():
                 if not df.empty:
                     current_price = float(df["Close"].iloc[-1]) if not df["Close"].empty else 0.0
-                    true_value = calculate_true_value(current_price)
-                    score = calculate_buy_to_hold_score(current_price, true_value)
-
                     st.subheader(f"{ticker}")
                     st.line_chart(df["Close"])
                     st.write(f"**Current Price**: ${current_price:.2f}")
-                    st.write(f"**True Value (based on metrics)**: ${true_value:.2f}")
-                    st.write(f"**Buy-to-Hold Score**: {score}/10")
                 else:
                     st.warning(f"No data available for {ticker}")
 
@@ -133,15 +74,60 @@ with tab2:
 
 # Options Analysis Tab
 with tab3:
-    st.header("Options Analysis")
-    st.write("Options analysis will be implemented soon!")
+    st.header("Top 5 Options Plays")
+
+    # User inputs
+    ticker = st.text_input("Enter Stock Ticker (e.g., AAPL):", "AAPL")
+    expiry_date = st.text_input("Enter Expiration Date (YYYY-MM-DD):", "")
+    risk_level = st.selectbox("Select Risk Level:", ["Conservative", "Moderate", "Aggressive"])
+
+    # Polygon API endpoint
+    def fetch_options_data(ticker):
+        """Fetch options data for a given ticker."""
+        url = f"https://api.polygon.io/v3/snapshot/options/{ticker}?apiKey={POLYGON_API_KEY}"
+        response = requests.get(url)
+        if response.status_code == 200:
+            return response.json()
+        else:
+            st.error(f"Error fetching options data: {response.status_code}")
+            return None
+
+    # Analyze Options Data
+    def analyze_options(data, risk_level):
+        """Filter and rank options based on risk level."""
+        options = pd.DataFrame(data['results'])
+
+        # Calculate Potential ROI (placeholder logic)
+        options['Potential ROI'] = options['implied_volatility'] * 100  # Example formula
+
+        # Filter options based on risk level
+        if risk_level == "Conservative":
+            filtered = options[options['delta'].abs() < 0.4]
+        elif risk_level == "Moderate":
+            filtered = options[(options['delta'].abs() >= 0.4) & (options['delta'].abs() <= 0.6)]
+        else:
+            filtered = options[options['delta'].abs() > 0.6]
+
+        # Sort by ROI and return top 5
+        return filtered.nlargest(5, 'Potential ROI')
+
+    # Fetch and Display Options
+    if st.button("Fetch Top Options Plays"):
+        with st.spinner("Fetching and analyzing options data..."):
+            try:
+                data = fetch_options_data(ticker)
+                if data and 'results' in data:
+                    top_options = analyze_options(data, risk_level)
+                    st.success(f"Top 5 Options Plays for {ticker}")
+                    st.dataframe(top_options[['symbol', 'strike_price', 'expiration_date', 'implied_volatility', 'delta', 'Potential ROI']])
+                else:
+                    st.error("No options data available. Please check the ticker or API key.")
+            except Exception as e:
+                st.error(f"Error fetching options data: {e}")
 
 # Twitter Feeds Tab
 with tab4:
     st.header("Twitter Feeds")
-    usernames = st.text_input("Enter Twitter usernames (comma-separated):", "elonmusk, realDonaldTrump")
-    username_list = [u.strip() for u in usernames.split(",")]
-
     st.write("Twitter integration requires elevated API access. Feature will be functional when configured.")
 
 # Intraday Data Tab
@@ -155,10 +141,35 @@ with tab5:
 
     if st.button("Fetch Intraday Data"):
         with st.spinner("Fetching intraday data..."):
-            intraday_data = fetch_intraday_data(symbol, interval, outputsize)
-            if intraday_data is not None:
+            base_url = "https://www.alphavantage.co/query"
+            params = {
+                "function": "TIME_SERIES_INTRADAY",
+                "symbol": symbol,
+                "interval": interval,
+                "outputsize": outputsize,
+                "datatype": "json",
+                "apikey": ALPHA_VANTAGE_API_KEY,
+            }
+            response = requests.get(base_url, params=params)
+            data = response.json()
+
+            if f"Time Series ({interval})" in data:
+                time_series_key = f"Time Series ({interval})"
+                intraday_data = data[time_series_key]
+                df = pd.DataFrame.from_dict(intraday_data, orient="index")
+                df = df.rename(
+                    columns={
+                        "1. open": "Open",
+                        "2. high": "High",
+                        "3. low": "Low",
+                        "4. close": "Close",
+                        "5. volume": "Volume",
+                    }
+                )
+                df.index = pd.to_datetime(df.index)
+                df = df.sort_index()
                 st.success(f"Data fetched for {symbol} ({interval})")
-                st.dataframe(intraday_data.head())
-                st.line_chart(intraday_data["Close"].astype(float))
+                st.dataframe(df.head())
+                st.line_chart(df["Close"].astype(float))
             else:
                 st.error("Failed to fetch data. Please check the symbol or API key.")
