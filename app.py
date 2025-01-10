@@ -70,14 +70,14 @@ with tab1:
                 if not df.empty:
                     # Ensure 'Close' column exists and has values
                     if 'Close' in df.columns and not df['Close'].empty:
-                        current_price = df["Close"].iloc[-1]
+                        current_price = df["Close"].iloc[-1]  # Convert to scalar
                         true_value = calculate_true_value(current_price)
                         buy_to_hold_score = calculate_buy_to_hold_score(current_price, true_value)
                         
                         st.subheader(ticker)
                         st.line_chart(df["Close"])
-                        st.write(f"**Current Price**: ${current_price:.2f}")
-                        st.write(f"**True Value (based on metrics)**: ${true_value:.2f}")
+                        st.write(f"**Current Price**: ${float(current_price):.2f}")
+                        st.write(f"**True Value (based on metrics)**: ${float(true_value):.2f}")
                         st.write(f"**Buy-to-Hold Score**: {buy_to_hold_score}/10")
                     else:
                         st.warning(f"No valid 'Close' data available for {ticker}")
