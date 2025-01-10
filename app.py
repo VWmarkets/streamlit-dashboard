@@ -2,103 +2,134 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
+import requests
 from textblob import TextBlob
 
 # Title
 st.title("Comprehensive Financial Dashboard")
 st.write("Track your portfolio, options, market news, and Twitter feeds in real time.")
 
-# Sidebar: User Input
-st.sidebar.header("User Input")
-tickers = st.sidebar.text_input(
-    "Enter stock tickers (comma-separated):", "AAPL, TSLA, NVDA, XOM"
-)
-portfolio_data = st.sidebar.text_area(
-    "Enter portfolio (Ticker, Quantity, Price):", "AAPL, 10, 150\nTSLA, 5, 700"
+# Tabs for the app
+tab1, tab2, tab3, tab4, tab5 = st.tabs(
+    ["Portfolio Overview", "RSI Alerts", "Options Analysis", "Twitter Feeds", "Intraday Data"]
 )
 
-# Fetch Stock Data
+# Alpha Vantage API Key
+ALPHA_VANTAGE_API_KEY = "4UZZNRBA9VCHAHGD"
+
+# Function to fetch stock data
 @st.cache_data
-def fetch_data(ticker_list):
+def fetch_stock_data(ticker_list):
     data = {}
     for ticker in ticker_list:
         try:
             df = yf.download(ticker, period="1y", interval="1d")
-            df['SMA_50'] = df['Close'].rolling(window=50).mean()
-            df['SMA_200'] = df['Close'].rolling(window=200).mean()
             data[ticker] = df
         except Exception as e:
-            st.warning(f"Could not fetch data for {ticker}: {e}")
+            st.warning(f"Error fetching data for {ticker}: {e}")
     return data
 
+# Function to fetch intraday data from Alpha Vantage
+def fetch_intraday_data(symbol, interval, outputsize="compact"):
+    base_url = "https://www.alphavantage.co/query"
+    params = {
+        "function": "TIME_SERIES_INTRADAY",
+        "symbol": symbol,
+        "interval": interval,
+        "outputsize": outputsize,
+        "datatype": "json",
+        "apikey": ALPHA_VANTAGE_API_KEY,
+    }
+    response = requests.get(base_url, params=params)
+    data = response.json()
 
-# Function to calculate estimated true value
-def estimate_true_value(df):
-    if 'Close' in df.columns:
-        recent_close = df['Close'].iloc[-1]
-        sma_50 = df['SMA_50'].iloc[-1] if 'SMA_50' in df.columns else np.nan
-        sma_200 = df['SMA_200'].iloc[-1] if 'SMA_200' in df.columns else np.nan
-        return (recent_close + sma_50 + sma_200) / 3
-    return np.nan
+    if f"Time Series ({interval})" in data:
+        time_series_key = f"Time Series ({interval})"
+        intraday_data = data[time_series_key]
+        df = pd.DataFrame.from_dict(intraday_data, orient="index")
+        df = df.rename(
+            columns={
+                "1. open": "Open",
+                "2. high": "High",
+                "3. low": "Low",
+                "4. close": "Close",
+                "5. volume": "Volume",
+            }
+        )
+        df.index = pd.to_datetime(df.index)
+        df = df.sort_index()
+        return df
+    else:
+        return None
 
-
-# Fetch Data
-ticker_list = [ticker.strip() for ticker in tickers.split(",")]
-data = fetch_data(ticker_list)
-
-# Tabs
-tab1, tab2, tab3, tab4 = st.tabs(["Portfolio Overview", "RSI Alerts", "News & Indicators", "Twitter Feeds"])
-
-# Tab 1: Portfolio Overview
+# Portfolio Overview Tab
 with tab1:
-    st.subheader("Portfolio Overview")
-    portfolio = [row.split(",") for row in portfolio_data.split("\n") if row.strip()]
-    for ticker, qty, price in portfolio:
-        qty, price = int(qty.strip()), float(price.strip())
-        if ticker.strip() in data:
-            df = data[ticker.strip()]
-            st.write(f"**{ticker.strip()}**")
-            # Check for necessary columns
-            if all(col in df.columns for col in ['Close', 'SMA_50', 'SMA_200']):
-                st.line_chart(df[['Close', 'SMA_50', 'SMA_200']])
-                true_value = estimate_true_value(df)
-                st.write(f"Estimated True Value: **${true_value:.2f}**")
-            else:
-                missing_cols = [col for col in ['Close', 'SMA_50', 'SMA_200'] if col not in df.columns]
-                st.warning(f"Missing data for {ticker.strip()}: {', '.join(missing_cols)}")
-        else:
-            st.warning(f"No data for {ticker.strip()}")
+    st.header("Portfolio Overview")
+    tickers = st.text_input("Enter stock tickers (comma-separated):", "AAPL, TSLA, NVDA, XOM")
+    ticker_list = [t.strip() for t in tickers.split(",")]
+    
+    if st.button("Fetch Portfolio Data"):
+        with st.spinner("Fetching portfolio data..."):
+            stock_data = fetch_stock_data(ticker_list)
+            for ticker, df in stock_data.items():
+                if not df.empty:
+                    st.subheader(ticker)
+                    st.line_chart(df["Close"])
+                else:
+                    st.warning(f"No data available for {ticker}")
 
-# Tab 2: RSI Alerts
+# RSI Alerts Tab
 with tab2:
-    st.subheader("RSI Alerts")
-    def calculate_rsi(df, window=14):
-        delta = df['Close'].diff()
-        gain = np.where(delta > 0, delta, 0)
-        loss = np.where(delta < 0, -delta, 0)
-        avg_gain = pd.Series(gain).rolling(window=window).mean()
-        avg_loss = pd.Series(loss).rolling(window=window).mean()
-        rs = avg_gain / avg_loss
+    st.header("RSI Alerts")
+
+    def calculate_rsi(data, period=14):
+        delta = data.diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+        rs = gain / loss
         rsi = 100 - (100 / (1 + rs))
         return rsi
-    
-    for ticker in ticker_list:
-        if ticker in data:
-            df = data[ticker]
-            if 'Close' in df.columns:
-                df['RSI'] = calculate_rsi(df)
-                st.write(f"**{ticker} RSI**")
-                st.line_chart(df['RSI'])
-            else:
-                st.warning(f"No Close data for {ticker} to calculate RSI.")
 
-# Tab 3: News & Indicators
+    if st.button("Generate RSI Alerts"):
+        with st.spinner("Calculating RSI..."):
+            for ticker, df in fetch_stock_data(ticker_list).items():
+                if not df.empty:
+                    df["RSI"] = calculate_rsi(df["Close"])
+                    latest_rsi = df["RSI"].iloc[-1]
+                    st.subheader(ticker)
+                    st.line_chart(df["RSI"])
+                    st.write(f"Latest RSI: {latest_rsi}")
+                else:
+                    st.warning(f"No data available for {ticker}")
+
+# Options Analysis Tab
 with tab3:
-    st.subheader("News & Indicators")
-    st.write("News and economic indicators will be added soon!")
+    st.header("Options Analysis")
+    st.write("Options analysis will be implemented soon!")
 
-# Tab 4: Twitter Feeds
+# Twitter Feeds Tab
 with tab4:
-    st.subheader("Twitter Feeds")
-    twitter_users = st.text_input("Enter Twitter usernames (comma-separated):", "elonmusk, realDonaldTrump")
-    st.warning("Twitter integration is currently unavailable.")
+    st.header("Twitter Feeds")
+    usernames = st.text_input("Enter Twitter usernames (comma-separated):", "elonmusk, realDonaldTrump")
+    username_list = [u.strip() for u in usernames.split(",")]
+
+    st.write("Twitter integration requires elevated API access. Feature will be functional when configured.")
+
+# Intraday Data Tab
+with tab5:
+    st.header("Intraday Stock Data")
+
+    symbol = st.text_input("Enter Stock Symbol (e.g., AAPL):", "AAPL")
+    interval = st.selectbox("Select Interval:", ["1min", "5min", "15min", "30min", "60min"])
+    outputsize = st.selectbox("Output Size:", ["compact (latest 100 points)", "full (30 days)"])
+    outputsize = "compact" if "compact" in outputsize else "full"
+
+    if st.button("Fetch Intraday Data"):
+        with st.spinner("Fetching intraday data..."):
+            intraday_data = fetch_intraday_data(symbol, interval, outputsize)
+            if intraday_data is not None:
+                st.success(f"Data fetched for {symbol} ({interval})")
+                st.dataframe(intraday_data.head())
+                st.line_chart(intraday_data["Close"].astype(float))
+            else:
+                st.error("Failed to fetch data. Please check the symbol or API key.")
