@@ -2,4 +2,5 @@ streamlit
 yfinance
 pandas
 numpy
-tweepy>=4.14.0
+requests
+textblob
