@@ -36,7 +36,7 @@ def calculate_true_value(df):
         current_price = df['Close'].iloc[-1]
         sma_50 = df['SMA_50'].iloc[-1]
         sma_200 = df['SMA_200'].iloc[-1]
-        true_value = (current_price + sma_50 + sma_200) / 3  # Simple weighted average
+        true_value = (current_price + sma_50 + sma_200) / 3  # Simple average calculation
         return true_value
     return None
 
@@ -46,7 +46,7 @@ def calculate_buy_to_hold_score(df):
         current_price = df['Close'].iloc[-1]
         sma_50 = df['SMA_50'].iloc[-1]
         rsi = df['RSI'].iloc[-1]
-        
+
         # Buy-to-Hold Logic
         score = 10
         if current_price > sma_50:
@@ -63,25 +63,33 @@ with tab1:
     st.header("Portfolio Overview")
     tickers = st.text_input("Enter stock tickers (comma-separated):", "AAPL, TSLA, NVDA, XOM")
     ticker_list = [t.strip() for t in tickers.split(",")]
-    
+
     if st.button("Fetch Portfolio Data"):
         with st.spinner("Fetching portfolio data..."):
             stock_data = fetch_stock_data(ticker_list)
+            
             for ticker, df in stock_data.items():
                 if not df.empty and 'Close' in df.columns:
+                    # Calculate RSI
                     df['RSI'] = 100 - (100 / (1 + df['Close'].diff().clip(lower=0).rolling(14).mean() /
                                               df['Close'].diff().clip(upper=0).abs().rolling(14).mean()))
+                    # Calculate True Value
                     true_value = calculate_true_value(df)
+                    
+                    # Calculate Buy-to-Hold Scale
                     buy_to_hold_score = calculate_buy_to_hold_score(df)
                     
-                    st.subheader(ticker)
+                    # Display Charts and Metrics
+                    st.subheader(f"{ticker} Overview")
                     st.line_chart(df[['Close', 'SMA_50', 'SMA_200']])
+                    
                     if true_value:
                         st.write(f"**True Value:** ${true_value:.2f}")
-                    if buy_to_hold_score:
-                        st.write(f"**Buy-to-Hold Score:** {buy_to_hold_score}/10")
+                    
+                    if buy_to_hold_score is not None:
+                        st.write(f"**Buy-to-Hold Scale:** {buy_to_hold_score}/10 (1 = Weak Buy, 10 = Strong Buy)")
                 else:
-                    st.warning(f"No data available for {ticker}")
+                    st.warning(f"No data available or required columns missing for {ticker}")
 
 # RSI Alerts Tab
 with tab2:
