@@ -70,7 +70,7 @@ tab1, tab2, tab3, tab4 = st.tabs(["Portfolio Overview", "RSI Alerts", "Options A
 # Tab 1: Portfolio Overview
 with tab1:
     st.subheader("Portfolio Overview")
-    total_value = 0
+    total_value = 0.0  # Initialize total portfolio value as a float
 
     for ticker in ticker_list:
         st.write(f"### {ticker}")
@@ -104,12 +104,12 @@ with tab1:
                 try:
                     quantity = float(row_data[1].strip())
                     cost_price = float(row_data[2].strip())
-                    current_price = data['Close'].iloc[-1]
+                    current_price = float(data['Close'].iloc[-1])
                     total_value += quantity * current_price
                 except Exception as e:
                     st.warning(f"Could not calculate value for {ticker}: {e}")
 
-    st.write(f"**Total Portfolio Value:** ${total_value:,.2f}")
+    st.write(f"**Total Portfolio Value:** ${total_value:,.2f}")  # Use proper formatting
 
 # Tab 2: RSI Alerts
 with tab2:
