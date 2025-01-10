@@ -2,98 +2,91 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
-import requests
 from textblob import TextBlob
 
-# Set API keys
-NEWS_API_KEY = "YOUR_NEWSAPI_KEY"
-
-# Title and Tabs
+# Title
 st.title("Comprehensive Financial Dashboard")
 st.write("Track your portfolio, options, market news, and Twitter feeds in real time.")
-tabs = st.tabs(["Portfolio Overview", "RSI Alerts", "Options Analysis", "News & Indicators"])
 
-# Sidebar Inputs
+# Sidebar Input
 st.sidebar.header("User Input")
-tickers = st.sidebar.text_input("Enter stock tickers (comma-separated):", "AAPL, TSLA, NVDA, XOM")
+tickers = st.sidebar.text_input("Enter stock tickers (comma-separated):", "AAPL, TSLA, NVDA, XOM").split(",")
 portfolio_data = st.sidebar.text_area("Enter portfolio (Ticker, Quantity, Price):", "AAPL, 10, 150\nTSLA, 5, 700")
 
-# Split tickers
-ticker_list = [t.strip().upper() for t in tickers.split(",")]
+# Fetch Stock Data
+@st.cache_data
+def fetch_data(ticker_list):
+    data = {}
+    for ticker in ticker_list:
+        try:
+            df = yf.download(ticker.strip(), period="1y", interval="1d")
+            df['SMA_50'] = df['Close'].rolling(window=50).mean()
+            df['SMA_200'] = df['Close'].rolling(window=200).mean()
+            df['RSI'] = calculate_rsi(df['Close'])
+            data[ticker.strip()] = df
+        except Exception as e:
+            st.warning(f"Error fetching data for {ticker.strip()}: {e}")
+    return data
 
-# Portfolio Data Parsing
-portfolio = []
-for line in portfolio_data.split("\n"):
+# Calculate RSI
+def calculate_rsi(series, window=14):
+    delta = series.diff(1)
+    gain = delta.where(delta > 0, 0)
+    loss = -delta.where(delta < 0, 0)
+    avg_gain = gain.rolling(window=window, min_periods=1).mean()
+    avg_loss = loss.rolling(window=window, min_periods=1).mean()
+    rs = avg_gain / avg_loss
+    rsi = 100 - (100 / (1 + rs))
+    return rsi
+
+# Estimate True Value
+def estimate_true_value(df):
     try:
-        symbol, qty, price = line.split(",")
-        portfolio.append({"Ticker": symbol.strip().upper(), "Quantity": int(qty.strip()), "Price": float(price.strip())})
-    except:
-        continue
+        pe_ratio = 20  # Assume a standard P/E ratio
+        growth_rate = 1.1  # Assume a 10% growth rate
+        sma_50 = df['SMA_50'][-1]
+        true_value = sma_50 * growth_rate if not np.isnan(sma_50) else np.nan
+        return true_value
+    except Exception as e:
+        return np.nan
 
-# Tab: Portfolio Overview
-with tabs[0]:
+# Fetch data
+data = fetch_data(tickers)
+
+# Tabs
+tab1, tab2, tab3, tab4 = st.tabs(["Portfolio Overview", "RSI Alerts", "News & Indicators", "Twitter Feeds"])
+
+# Tab 1: Portfolio Overview
+with tab1:
     st.subheader("Portfolio Overview")
-    portfolio_df = pd.DataFrame(portfolio)
-    if not portfolio_df.empty:
-        portfolio_value = 0
-        for ticker in portfolio_df["Ticker"]:
-            try:
-                data = yf.Ticker(ticker).history(period="1d")
-                current_price = data["Close"].iloc[-1]
-                portfolio_df.loc[portfolio_df["Ticker"] == ticker, "Current Price"] = current_price
-                portfolio_df.loc[portfolio_df["Ticker"] == ticker, "Value"] = (
-                    portfolio_df.loc[portfolio_df["Ticker"] == ticker, "Quantity"] * current_price
-                )
-                portfolio_value += portfolio_df.loc[portfolio_df["Ticker"] == ticker, "Value"].values[0]
-            except Exception as e:
-                st.warning(f"Error fetching data for {ticker}: {e}")
-        st.write(portfolio_df)
-        st.write(f"**Total Portfolio Value: ${portfolio_value:,.2f}**")
-    else:
-        st.warning("No portfolio data provided.")
+    portfolio = [row.split(",") for row in portfolio_data.split("\n") if row.strip()]
+    for ticker, qty, price in portfolio:
+        qty, price = int(qty.strip()), float(price.strip())
+        if ticker.strip() in data:
+            df = data[ticker.strip()]
+            st.write(f"**{ticker.strip()}**")
+            st.line_chart(df[['Close', 'SMA_50', 'SMA_200']])
+            true_value = estimate_true_value(df)
+            st.write(f"Estimated True Value: **${true_value:.2f}**")
+        else:
+            st.warning(f"No data for {ticker.strip()}")
 
-# Tab: RSI Alerts
-with tabs[1]:
+# Tab 2: RSI Alerts
+with tab2:
     st.subheader("RSI Alerts")
-    for ticker in ticker_list:
-        try:
-            data = yf.download(ticker, period="6mo", interval="1d")
-            data["RSI"] = 100 - (100 / (1 + data["Close"].diff().apply(lambda x: x if x > 0 else 0).mean() / data["Close"].diff().apply(lambda x: -x if x < 0 else 0).mean()))
-            st.write(f"{ticker} RSI")
-            st.line_chart(data["RSI"])
-        except Exception as e:
-            st.warning(f"Error calculating RSI for {ticker}: {e}")
+    for ticker, df in data.items():
+        if 'RSI' in df.columns:
+            st.write(f"**{ticker} RSI**")
+            st.line_chart(df['RSI'])
+        else:
+            st.warning(f"No RSI data for {ticker}")
 
-# Tab: Options Analysis
-with tabs[2]:
-    st.subheader("Options Analysis")
-    for ticker in ticker_list:
-        try:
-            stock = yf.Ticker(ticker)
-            options = stock.option_chain(stock.options[0])
-            st.write(f"Options Chain for {ticker} (Expiration: {stock.options[0]})")
-            st.write("Calls:")
-            st.write(options.calls)
-            st.write("Puts:")
-            st.write(options.puts)
-        except Exception as e:
-            st.warning(f"Error fetching options for {ticker}: {e}")
-
-# Tab: News & Indicators
-with tabs[3]:
+# Tab 3: News & Indicators
+with tab3:
     st.subheader("News & Indicators")
-    for ticker in ticker_list:
-        try:
-            url = f"https://newsapi.org/v2/everything?q={ticker}&apiKey={NEWS_API_KEY}"
-            response = requests.get(url)
-            articles = response.json().get("articles", [])
-            if articles:
-                st.write(f"News for {ticker}")
-                for article in articles[:5]:
-                    sentiment = TextBlob(article["title"]).sentiment.polarity
-                    sentiment_text = "Positive" if sentiment > 0 else "Negative" if sentiment < 0 else "Neutral"
-                    st.write(f"- [{article['title']}]({article['url']}) ({sentiment_text})")
-            else:
-                st.warning(f"No news found for {ticker}.")
-        except Exception as e:
-            st.warning(f"Error fetching news for {ticker}: {e}")
+    st.write("Coming soon...")
+
+# Tab 4: Twitter Feeds
+with tab4:
+    st.subheader("Twitter Feeds")
+    st.write("Coming soon...")
